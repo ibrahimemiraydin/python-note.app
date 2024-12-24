@@ -1,6 +1,6 @@
 import sys
 import sqlite3
-from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QPushButton, QListWidget, QLineEdit, QMessageBox
+from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QPushButton, QListWidget, QLineEdit, QMessageBox, QListWidgetItem
 from PySide6.QtCore import Qt
 
 class ToDoApp(QMainWindow):
@@ -13,10 +13,18 @@ class ToDoApp(QMainWindow):
         self.conn = sqlite3.connect('todo_list.db')
         self.cursor = self.conn.cursor()
 
+        # `completed` sütunu ekleniyor (eğer yoksa)
+        self.cursor.execute("PRAGMA table_info(tasks)")
+        columns = [column[1] for column in self.cursor.fetchall()]
+        if 'completed' not in columns:
+            self.cursor.execute("ALTER TABLE tasks ADD COLUMN completed INTEGER DEFAULT 0")
+            self.conn.commit()
+
         # Görevler tablosu oluşturuluyor (eğer yoksa)
         self.cursor.execute('''CREATE TABLE IF NOT EXISTS tasks (
                                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                               task TEXT NOT NULL)''')
+                               task TEXT NOT NULL,
+                               completed INTEGER DEFAULT 0)''')
         self.conn.commit()
 
         # Ana widget ve düzen
@@ -63,20 +71,32 @@ class ToDoApp(QMainWindow):
         selected_item = self.list_widget.currentRow()
         if selected_item != -1:
             task_text = self.list_widget.item(selected_item).text()
-            # Veritabanından sil
-            self.cursor.execute("DELETE FROM tasks WHERE task = ?", (task_text,))
-            self.conn.commit()
-            self.load_tasks()  # Listeyi güncelle
+            task_id = self.get_task_id(task_text)
+            if task_id:
+                # Veritabanından sil
+                self.cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+                self.conn.commit()
+                self.load_tasks()  # Listeyi güncelle
+            else:
+                QMessageBox.warning(self, "Hata", "Görev silinemedi!")
         else:
             QMessageBox.warning(self, "Uyarı", "Silmek için bir görev seçin!")
+
+    def get_task_id(self, task_text):
+        # Görev adını kullanarak ID'yi bul
+        self.cursor.execute("SELECT id FROM tasks WHERE task = ?", (task_text,))
+        result = self.cursor.fetchone()
+        return result[0] if result else None
 
     def load_tasks(self):
         # Mevcut görevleri listeye yükle
         self.list_widget.clear()
-        self.cursor.execute("SELECT task FROM tasks")
+        self.cursor.execute("SELECT id, task, completed FROM tasks")
         tasks = self.cursor.fetchall()
         for task in tasks:
-            self.list_widget.addItem(task[0])
+            task_id, task_text, completed = task
+            item = QListWidgetItem(task_text)
+            self.list_widget.addItem(item)
 
     def closeEvent(self, event):
         # Uygulama kapatıldığında veritabanı bağlantısını kapat
