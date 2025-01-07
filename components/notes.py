@@ -67,3 +67,25 @@ def create_new_note():
     temp_title = "New Note"
     note_id = database.add_note(temp_title, "")
     return note_id
+
+def load_items(note_list, filter_box, filter_text="", folder_id=None):
+    note_list.clear()
+    note_icon = QIcon("icons/note_icon.png")
+    folder_icon = QIcon("icons/folder_icon.png")
+
+    items = database.get_items_in_folder(folder_id)
+    for item in items:
+        if filter_box.currentText() == "All" and filter_text.lower() in item[1].lower():
+            item_widget = QListWidgetItem(folder_icon if item[3] == 'folder' else note_icon, item[1])
+            item_widget.setData(Qt.UserRole, item[0])
+            if item[3] == 'folder':
+                item_widget.setFlags(item_widget.flags() | Qt.ItemIsEditable)  # Folders can be renamed
+            item_widget.setSizeHint(QSize(300, 35))
+            note_list.addItem(item_widget)
+        elif filter_box.currentText() == "Title" and filter_text.lower() in item[1].lower():
+            item_widget = QListWidgetItem(folder_icon if item[3] == 'folder' else note_icon, item[1])
+            item_widget.setData(Qt.UserRole, item[0])
+            if item[3] == 'folder':
+                item_widget.setFlags(item_widget.flags() | Qt.ItemIsEditable)  # Folders can be renamed
+            item_widget.setSizeHint(QSize(300, 35))
+            note_list.addItem(item_widget)

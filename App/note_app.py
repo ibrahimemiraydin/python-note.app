@@ -8,14 +8,15 @@ from components.edit_note_window import EditNoteWindow
 from components.trash_window import TrashWindow
 from components.completed_window import CompletedWindow
 from App import ui
-from App import context_menu
-from App import notes
+from components import context_menu
+from components import notes
 
 class NoteApp(QWidget):
     notes_updated = pyqtSignal()
 
     def __init__(self):
         super().__init__()
+        database.create_database() # Veritabanını oluştur veya güncelle
         self.current_folder_id = None
         self.folder_history = []  # Stack to store the IDs of previously visited folders
         self.initUI()
@@ -67,13 +68,16 @@ class NoteApp(QWidget):
         main_layout.addLayout(top_layout)
 
         self.note_list = QListWidget()
-        self.note_list.setDragDropMode(QListWidget.InternalMove)
+        self.note_list.setDragEnabled(True)
+        self.note_list.setAcceptDrops(True)
+        self.note_list.setDragDropMode(QListWidget.InternalMove)  # Enable drag and drop
         self.note_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.note_list.customContextMenuRequested.connect(self.context_menu)
         self.note_list.itemClicked.connect(self.handle_item_click)
         self.note_list.itemDoubleClicked.connect(self.open_folder)
         self.note_list.setMinimumWidth(600)
         self.note_list.itemChanged.connect(self.rename_note_finished)
+        self.note_list.model().rowsMoved.connect(self.update_order)  # Connect rowsMoved signal to update_order function
         main_layout.addWidget(self.note_list)
 
         self.setLayout(main_layout)
@@ -100,10 +104,12 @@ class NoteApp(QWidget):
         self.note_list.clear()
         if folder_id is not None:
             if self.current_folder_id is not None:
-                self.folder_history.append(self.current_folder_id)  # Push the current folder ID to the stack
+                self.folder_history.append(self.current_folder_id)
             self.current_folder_id = folder_id
-        self.load_folder(filter_text, self.current_folder_id)
-        self.load_folders(filter_text, self.current_folder_id)
+
+        notes.load_items(self.note_list, self.filter_box, filter_text, self.current_folder_id)
+
+
 
     def filter_notes(self):
         filter_text = self.search_bar.text()
@@ -132,6 +138,15 @@ class NoteApp(QWidget):
     def load_folders(self, filter_text, parent_folder_id):
         notes.load_folders(self.note_list, self.filter_box, filter_text, parent_folder_id)
 
+    def update_order(self):
+        for index in range(self.note_list.count()):
+            item = self.note_list.item(index)
+            item_id = item.data(Qt.UserRole)
+            if item_id.startswith('note_'):
+                database.update_note_order(item_id, index)
+            elif item_id.startswith('folder_'):
+                folders.update_folder_order(item_id, index)
+
     def go_back(self):
         if self.folder_history:
             self.current_folder_id = self.folder_history.pop()  # Pop the last folder ID from the stack
@@ -144,8 +159,9 @@ class NoteApp(QWidget):
         self.load_all_notes()
 
     def new_note(self):
-        note_id = database.add_note("New Note", "", self.current_folder_id)
-        self.notes_updated.emit()
+        folder_id = self.current_folder_id if self.current_folder_id is not None else ''
+        note_id = database.add_note("New Note", "", folder_id)
+        self.load_notes()
 
         # Immediately rename the new note
         for i in range(self.note_list.count()):
@@ -192,8 +208,9 @@ class NoteApp(QWidget):
             self.notes_updated.emit()
 
     def new_folder(self):
-        folder_id = folders.add_folder("New Folder", self.current_folder_id)
-        self.notes_updated.emit()
+        parent_folder_id = self.current_folder_id if self.current_folder_id is not None else ''
+        folder_id = database.add_folder("New Folder", parent_folder_id)
+        self.load_notes()
 
         # Immediately rename the new folder
         for i in range(self.note_list.count()):

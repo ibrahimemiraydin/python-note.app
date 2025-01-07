@@ -22,6 +22,7 @@ def get_folders(include_trashed=False, only_root=False):
         query += ' AND trashed=0'
     if only_root:
         query += ' AND (parent_folder_id IS NULL OR parent_folder_id="")'
+    query += ' ORDER BY "order" ASC'
     c.execute(query)
     folders = c.fetchall()
     conn.close()
@@ -30,7 +31,7 @@ def get_folders(include_trashed=False, only_root=False):
 def get_folders_in_folder(parent_folder_id):
     conn = sqlite3.connect('notes.db')
     c = conn.cursor()
-    c.execute('SELECT id, name FROM folders WHERE parent_folder_id=? AND trashed=0 AND foldered=1', (parent_folder_id,))
+    c.execute('SELECT id, name FROM folders WHERE parent_folder_id=? AND trashed=0 AND foldered=1 ORDER BY "order" ASC', (parent_folder_id,))
     folders = c.fetchall()
     conn.close()
     return folders
@@ -139,5 +140,12 @@ def restore_folder(folder_id):
     else:
         # If the folder is not found, restore it in the root directory
         c.execute('UPDATE folders SET trashed=0, foldered=0, parent_folder_id="" WHERE id=?', (folder_id,))
+    conn.commit()
+    conn.close()
+
+def update_folder_order(folder_id, order):
+    conn = sqlite3.connect('notes.db')
+    c = conn.cursor()
+    c.execute('UPDATE folders SET "order"=? WHERE id=?', (order, folder_id))
     conn.commit()
     conn.close()

@@ -2,18 +2,26 @@ import sqlite3
 import uuid
 from components.folders import restore_folder
 
+# Mevcut fonksiyonlarınızı koruyun ve altına ekleyin
 def create_database():
     conn = sqlite3.connect('notes.db')
     c = conn.cursor()
 
+    # Folders tablosunu güncelleme
     c.execute('''CREATE TABLE IF NOT EXISTS folders (
                     id TEXT PRIMARY KEY,
                     name TEXT,
                     notes_id TEXT,
                     trashed INTEGER DEFAULT 0,
                     foldered INTEGER DEFAULT 0,
-                    parent_folder_id TEXT DEFAULT "")''')
+                    parent_folder_id TEXT DEFAULT "",
+                    "order" INTEGER DEFAULT 0)''')
+    try:
+        c.execute('ALTER TABLE folders ADD COLUMN "order" INTEGER DEFAULT 0')
+    except sqlite3.OperationalError:
+        pass  # Sütun zaten varsa hatayı yoksay
 
+    # Notes tablosunu güncelleme
     c.execute('''CREATE TABLE IF NOT EXISTS notes (
                     id TEXT PRIMARY KEY,
                     title TEXT,
@@ -21,19 +29,87 @@ def create_database():
                     trashed INTEGER DEFAULT 0,
                     completed INTEGER DEFAULT 0,
                     foldered INTEGER DEFAULT 0,
-                    folder_id TEXT DEFAULT "")''')
+                    folder_id TEXT DEFAULT "",
+                    "order" INTEGER DEFAULT 0)''')
+    try:
+        c.execute('ALTER TABLE notes ADD COLUMN "order" INTEGER DEFAULT 0')
+    except sqlite3.OperationalError:
+        pass  # Sütun zaten varsa hatayı yoksay
 
     conn.commit()
     conn.close()
 
-def add_note(title, content, folder_id=None):
-    note_id = "note_" + str(uuid.uuid4())
-    foldered = 1 if folder_id else 0
-    if folder_id is None:
-        folder_id = ""
+# Yeni fonksiyon olarak ekleyin
+def get_items_in_folder(folder_id=None):
     conn = sqlite3.connect('notes.db')
     c = conn.cursor()
-    c.execute('INSERT INTO notes (id, title, content, foldered, folder_id) VALUES (?, ?, ?, ?, ?)', (note_id, title, content, foldered, folder_id))
+
+    if folder_id is None:
+        query = '''
+            SELECT id, name, "order", 'folder' as type
+            FROM folders
+            WHERE (parent_folder_id IS NULL OR parent_folder_id = '')
+            AND trashed = 0
+            UNION
+            SELECT id, title as name, "order", 'note' as type
+            FROM notes
+            WHERE folder_id = ''
+            AND trashed = 0
+            AND completed = 0
+            ORDER BY "order" ASC
+        '''
+        c.execute(query)
+    else:
+        query = '''
+            SELECT id, name, "order", 'folder' as type
+            FROM folders
+            WHERE parent_folder_id = ?
+            AND trashed = 0
+            UNION
+            SELECT id, title as name, "order", 'note' as type
+            FROM notes
+            WHERE folder_id = ?
+            AND trashed = 0
+            AND completed = 0
+            ORDER BY "order" ASC
+        '''
+        c.execute(query, (folder_id, folder_id))
+    
+    items = c.fetchall()
+    conn.close()
+    return items
+
+def get_max_order_in_folder(folder_id=None):
+    conn = sqlite3.connect('notes.db')
+    c = conn.cursor()
+    if folder_id is None:
+        c.execute('''
+            SELECT MAX("order") FROM (
+                SELECT "order" FROM folders WHERE (parent_folder_id IS NULL OR parent_folder_id = '') AND trashed = 0
+                UNION ALL
+                SELECT "order" FROM notes WHERE folder_id = '' AND trashed = 0 AND completed = 0
+            )
+        ''')
+    else:
+        c.execute('''
+            SELECT MAX("order") FROM (
+                SELECT "order" FROM folders WHERE parent_folder_id = ? AND trashed = 0
+                UNION ALL
+                SELECT "order" FROM notes WHERE folder_id = ? AND trashed = 0 AND completed = 0
+            )
+        ''', (folder_id, folder_id))
+    
+    max_order = c.fetchone()[0]
+    conn.close()
+    return max_order if max_order is not None else 0
+
+def add_note(title, content, folder_id=None):
+    conn = sqlite3.connect('notes.db')
+    c = conn.cursor()
+    note_id = f'note_{uuid.uuid4()}'
+    max_order = get_max_order_in_folder(folder_id) + 1
+    c.execute('INSERT INTO notes (id, title, content, folder_id, "order") VALUES (?, ?, ?, ?, ?)', 
+              (note_id, title, content, folder_id if folder_id else '', max_order))
     conn.commit()
     conn.close()
     return note_id
@@ -127,8 +203,10 @@ def get_notes(include_trashed=False, include_completed=False, include_foldered=F
         query += ' AND foldered=0'
     if folder_id is not None:
         query += ' AND folder_id=?'
+        query += ' ORDER BY "order" ASC'
         c.execute(query, (folder_id,))
     else:
+        query += ' ORDER BY "order" ASC'
         c.execute(query)
     notes = c.fetchall()
     conn.close()
@@ -159,16 +237,15 @@ def get_note_by_id(note_id):
     return note
 
 def add_folder(name, parent_folder_id=None):
-    new_folder_id = "folder_" + str(uuid.uuid4())
-    foldered = 1 if parent_folder_id else 0
-    if parent_folder_id is None:
-        parent_folder_id = ""
     conn = sqlite3.connect('notes.db')
     c = conn.cursor()
-    c.execute('INSERT INTO folders (id, name, notes_id, foldered, parent_folder_id) VALUES (?, ?, ?, ?, ?)', (new_folder_id, name, "", foldered, parent_folder_id))
+    folder_id = f'folder_{uuid.uuid4()}'
+    max_order = get_max_order_in_folder(parent_folder_id) + 1
+    c.execute('INSERT INTO folders (id, name, parent_folder_id, "order") VALUES (?, ?, ?, ?)',
+              (folder_id, name, parent_folder_id if parent_folder_id else '', max_order))
     conn.commit()
     conn.close()
-    return new_folder_id
+    return folder_id
 
 def get_folders(include_trashed=False):
     conn = sqlite3.connect('notes.db')
@@ -176,6 +253,7 @@ def get_folders(include_trashed=False):
     query = 'SELECT * FROM folders WHERE 1=1'
     if not include_trashed:
         query += ' AND trashed=0'
+    query += ' ORDER BY "order" ASC'  # Sıralama ekleme
     c.execute(query)
     folders = c.fetchall()
     conn.close()
@@ -184,7 +262,7 @@ def get_folders(include_trashed=False):
 def get_folders_in_folder(parent_folder_id):
     conn = sqlite3.connect('notes.db')
     c = conn.cursor()
-    c.execute('SELECT id, name FROM folders WHERE parent_folder_id=? AND trashed=0 AND foldered=1', (parent_folder_id,))
+    c.execute('SELECT id, name FROM folders WHERE parent_folder_id=? AND trashed=0 AND foldered=1 ORDER BY "order" ASC', (parent_folder_id,))
     folders = c.fetchall()
     conn.close()
     return folders
@@ -206,27 +284,30 @@ def delete_folder(folder_id):
 def move_folder_to_folder(src_folder_id, dest_folder_id):
     conn = sqlite3.connect('notes.db')
     c = conn.cursor()
+    max_order = get_max_order_in_folder(dest_folder_id) + 1
     foldered = 1 if dest_folder_id else 0
     if dest_folder_id is None:
         dest_folder_id = ""
-    c.execute('UPDATE folders SET parent_folder_id=?, foldered=? WHERE id=?', (dest_folder_id, foldered, src_folder_id))
+    c.execute('UPDATE folders SET parent_folder_id=?, foldered=?, "order"=? WHERE id=?', (dest_folder_id, foldered, max_order, src_folder_id))
     conn.commit()
     conn.close()
+
 
 def move_note_to_folder(note_id, folder_id):
     conn = sqlite3.connect('notes.db')
     c = conn.cursor()
+    max_order = get_max_order_in_folder(folder_id) + 1
     foldered = 1 if folder_id else 0
     if folder_id is None:
         folder_id = ""
-    c.execute('UPDATE notes SET folder_id=?, foldered=? WHERE id=?', (folder_id, foldered, note_id))
+    c.execute('UPDATE notes SET folder_id=?, foldered=?, "order"=? WHERE id=?', (folder_id, foldered, max_order, note_id))
     conn.commit()
     conn.close()
 
 def get_notes_in_folder(folder_id):
     conn = sqlite3.connect('notes.db')
     c = conn.cursor()
-    c.execute('SELECT id, title, content FROM notes WHERE folder_id=? AND trashed=0 AND completed=0 AND foldered=1', (folder_id,))
+    c.execute('SELECT id, title, content FROM notes WHERE folder_id=? AND trashed=0 AND completed=0 AND foldered=1 ORDER BY "order" ASC', (folder_id,))
     notes = c.fetchall()
     conn.close()
     return notes
@@ -246,3 +327,10 @@ def get_trashed_folders():
     folders = c.fetchall()
     conn.close()
     return folders
+
+def update_note_order(note_id, order):
+    conn = sqlite3.connect('notes.db')
+    c = conn.cursor()
+    c.execute('UPDATE notes SET "order"=? WHERE id=?', (order, note_id))
+    conn.commit()
+    conn.close()
