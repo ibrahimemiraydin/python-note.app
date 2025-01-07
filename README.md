@@ -1,2 +1,4 @@
-# python-notefier.app
-Python note app.
+### python-notefier.app
+# Requirements:
+- sqlite3
+- PyQt5
