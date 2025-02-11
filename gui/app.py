@@ -6,8 +6,10 @@ from gui.components.note_detail import NoteDetailFrame
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Not Uygulaması")
-        self.geometry("800x600")
+        ctk.set_appearance_mode("dark")  # Koyu tema
+        ctk.set_default_color_theme("green")  # Modern yeşil renk teması
+        self.title("Modern Not Uygulaması")
+        self.geometry("1000x700")
         self.configure_layout()
 
     def configure_layout(self):

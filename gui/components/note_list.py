@@ -50,18 +50,35 @@ class NoteListFrame(ctk.CTkFrame):
 
         if notes:
             for note in notes:
-                note_frame = ctk.CTkFrame(self.note_listbox)
+                note_frame = ctk.CTkFrame(
+                    self.note_listbox,
+                    fg_color="#2A2D2E",  # Koyu arka plan
+                    border_color="#3E4142",
+                    border_width=1,
+                    corner_radius=10
+                )
                 note_frame.pack(fill="x", pady=5, padx=5)
 
-                # Başlık (daha büyük ve belirgin)
-                title_label = ctk.CTkLabel(note_frame, text=note.title, font=("Arial", 14, "bold"))
-                title_label.pack(side="top", padx=10, pady=(5, 0), anchor="w")
+                # Başlık (modern font)
+                title_label = ctk.CTkLabel(
+                    note_frame, 
+                    text=note.title, 
+                    font=("Segoe UI", 14, "bold"),
+                    text_color="#FFFFFF"
+                )
+                title_label.pack(side="top", padx=10, pady=(10, 0), anchor="w")
 
-                # İçerik (ilk 2 satır)
-                content_lines = note.content.split("\n")  # İçeriği satırlara ayır
-                content_preview = "\n".join(content_lines[:2])  # İlk 2 satırı al
-                content_label = ctk.CTkLabel(note_frame, text=content_preview, font=("Arial", 12), wraplength=600, justify="left")  # Sola hizala
-                content_label.pack(side="top", padx=10, pady=(0, 5), anchor="w")
+                # İçerik (daha okunabilir)
+                content_preview = "\n".join(note.content.split("\n")[:2])
+                content_label = ctk.CTkLabel(
+                    note_frame, 
+                    text=content_preview, 
+                    font=("Segoe UI", 12),
+                    text_color="#B0B0B0",
+                    wraplength=800,
+                    justify="left"
+                )
+                content_label.pack(side="top", padx=10, pady=(0, 10), anchor="w")
 
                 # Alt panel (Tarih ve butonlar) 
                 bottom_frame = ctk.CTkFrame(note_frame, fg_color="transparent")
