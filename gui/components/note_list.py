@@ -57,18 +57,19 @@ class NoteListFrame(ctk.CTkFrame):
                 title_label = ctk.CTkLabel(note_frame, text=note.title, font=("Arial", 14, "bold"))
                 title_label.pack(side="top", padx=10, pady=(5, 0), anchor="w")
 
-                # İçerik (ilk 100 karakter)
-                content_preview = note.content[:100] + "..." if len(note.content) > 100 else note.content
-                content_label = ctk.CTkLabel(note_frame, text=content_preview, font=("Arial", 12))
+                # İçerik (ilk 2 satır)
+                content_lines = note.content.split("\n")  # İçeriği satırlara ayır
+                content_preview = "\n".join(content_lines[:2])  # İlk 2 satırı al
+                content_label = ctk.CTkLabel(note_frame, text=content_preview, font=("Arial", 12), wraplength=600, justify="left")  # Sola hizala
                 content_label.pack(side="top", padx=10, pady=(0, 5), anchor="w")
 
-                # Alt panel (Tarih ve butonlar)
+                # Alt panel (Tarih ve butonlar) 
                 bottom_frame = ctk.CTkFrame(note_frame, fg_color="transparent")
                 bottom_frame.pack(side="bottom", fill="x", padx=10, pady=5)
 
                 # Tarih
                 date_label = ctk.CTkLabel(bottom_frame, text=f"Oluşturulma Tarihi: {note.created_at}", font=("Arial", 10))
-                date_label.pack(side="left", padx=0, pady=5)
+                date_label.pack(side="left", padx=10, pady=5)
 
                 # Butonlar (Aç ve Sil)
                 button_frame = ctk.CTkFrame(bottom_frame, fg_color="transparent")
@@ -82,6 +83,11 @@ class NoteListFrame(ctk.CTkFrame):
         else:
             no_notes_label = ctk.CTkLabel(self.note_listbox, text="Henüz hiç not eklenmemiş." if not search_term else "Aranan kriterlere uygun not bulunamadı.")
             no_notes_label.pack(padx=10, pady=10)
+
+        # İçerik yoksa scroll bar'ı gizle
+        if not notes:
+            self.note_listbox.pack_propagate(False)  # Scroll bar'ı gizle
+
 
     def delete_note(self, note_id):
         delete_note(note_id)
